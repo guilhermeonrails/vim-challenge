@@ -76,18 +76,18 @@
 </head>
 <body class="flex flex-col items-center justify-center min-h-screen p-4">
 
-    <!-- Stats Bar (Inicia escondida para tela inicial limpa) -->
+    <!-- Barra de Estatísticas -->
     <div id="stats-bar" class="w-full max-w-2xl flex justify-between mb-0 px-6 py-3 bg-gray-900 border border-gray-700 rounded-t-lg text-sm md:text-base hidden">
         <div>Nível: <span id="level-display" class="text-green-400 font-bold">1</span>/10</div>
         <div>Tempo: <span id="timer-display" class="text-white font-mono">00:00</span></div>
         <div>Movimentos: <span id="moves-display" class="text-blue-400 font-bold">0</span></div>
     </div>
 
-    <!-- Game Area -->
+    <!-- Área do Jogo -->
     <div id="game-container" class="terminal-container bg-black p-2 rounded-lg relative">
         <div id="grid" class="grid"></div>
         
-        <!-- Simplified Overlay -->
+        <!-- Overlay Inicial Simplificado -->
         <div id="overlay" class="absolute inset-0 bg-[#0d1117] flex flex-col items-center justify-center text-center p-6 z-20 rounded-lg">
             <div id="overlay-content" class="w-full max-w-sm">
                 <h2 class="text-4xl font-bold mb-12 text-green-500 tracking-tight">VIM Master CHALLENGE</h2>
@@ -99,7 +99,7 @@
         </div>
     </div>
 
-    <!-- Key Hints -->
+    <!-- Atalhos de Teclado -->
     <div id="hints-container" class="mt-6 flex gap-3 hidden">
         <div id="key-h" class="key-hint">h<div class="text-[10px] text-gray-500">←</div></div>
         <div id="key-j" class="key-hint">j<div class="text-[10px] text-gray-500">↓</div></div>
@@ -107,7 +107,7 @@
         <div id="key-l" class="key-hint">l<div class="text-[10px] text-gray-500">→</div></div>
     </div>
 
-    <!-- Mobile Controls -->
+    <!-- Controlos Mobile -->
     <div id="mobile-controls" class="mt-6 md:hidden d-pad grid grid-cols-3 gap-2 hidden">
         <div></div>
         <button onclick="handleMove('k')">k</button>
@@ -161,6 +161,7 @@
 
         function generateLevel() {
             walls = [];
+            // Paredes das bordas
             for (let x = 0; x < GRID_WIDTH; x++) {
                 walls.push({x, y: 0});
                 walls.push({x, y: GRID_HEIGHT - 1});
@@ -170,11 +171,13 @@
                 walls.push({x: GRID_WIDTH - 1, y});
             }
 
+            // Posição inicial do jogador
             player = {
                 x: Math.floor(Math.random() * (GRID_WIDTH - 4)) + 2,
                 y: Math.floor(Math.random() * (GRID_HEIGHT - 4)) + 2
             };
 
+            // Posição do objetivo (longe do jogador)
             let validGoal = false;
             while (!validGoal) {
                 goal = {
@@ -185,6 +188,7 @@
                 if (dist > 8) validGoal = true;
             }
 
+            // Obstáculos
             const obstacleDensity = 0.1 + (level * 0.02); 
             const obstacleCount = Math.floor((GRID_WIDTH * GRID_HEIGHT) * obstacleDensity);
             
@@ -192,8 +196,13 @@
                 const ox = Math.floor(Math.random() * (GRID_WIDTH - 2)) + 1;
                 const oy = Math.floor(Math.random() * (GRID_HEIGHT - 2)) + 1;
                 
+                // Verificar se a posição é adjacente ao objetivo (para garantir acesso)
+                const isGoalNeighbor = (Math.abs(ox - goal.x) === 1 && oy === goal.y) || 
+                                       (Math.abs(oy - goal.y) === 1 && ox === goal.x);
+
                 const isOccupied = (ox === player.x && oy === player.y) || 
                                    (ox === goal.x && oy === goal.y) ||
+                                   isGoalNeighbor || // Garante que os lados da estrela fiquem livres
                                    walls.some(w => w.x === ox && w.y === oy);
                 
                 if (!isOccupied) {
@@ -285,7 +294,6 @@
             levelDisplay.innerText = level;
             movesDisplay.innerText = moves;
             
-            // Mostrar elementos do jogo
             overlay.style.display = 'none';
             statsBar.classList.remove('hidden');
             hintsContainer.classList.remove('hidden');
