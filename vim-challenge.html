@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vim Master Challenge</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        body {
+            background-color: #0d1117;
+            color: #c9d1d9;
+            font-family: 'Fira Code', monospace;
+            overflow: hidden;
+            touch-action: manipulation;
+        }
+        .terminal-container {
+            border: 1px solid #30363d;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+        .grid-cell {
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+            transition: all 0.05s ease;
+        }
+        .wall { color: #484f58; }
+        .player { 
+            background-color: #238636; 
+            color: white;
+            border-radius: 2px;
+            box-shadow: 0 0 12px #238636;
+            z-index: 5;
+        }
+        .goal { color: #f2cc60; animation: pulse 1s infinite; font-weight: bold; }
+        .trail { color: #1f6feb; opacity: 0.2; }
+        
+        @keyframes pulse {
+            0% { transform: scale(1); filter: brightness(1); }
+            50% { transform: scale(1.3); filter: brightness(1.5); }
+            100% { transform: scale(1); filter: brightness(1); }
+        }
+
+        .key-hint {
+            border: 1px solid #30363d;
+            background: #161b22;
+            padding: 5px 12px;
+            border-radius: 4px;
+            min-width: 45px;
+            text-align: center;
+            transition: all 0.1s;
+        }
+        .key-active {
+            background: #238636;
+            border-color: #2ea043;
+            color: white;
+            transform: scale(0.95);
+        }
+
+        .d-pad button {
+            background: #21262d;
+            border: 1px solid #30363d;
+            width: 60px;
+            height: 60px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 1.5rem;
+        }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-center min-h-screen p-4">
+
+    <!-- Stats Bar (Inicia escondida para tela inicial limpa) -->
+    <div id="stats-bar" class="w-full max-w-2xl flex justify-between mb-0 px-6 py-3 bg-gray-900 border border-gray-700 rounded-t-lg text-sm md:text-base hidden">
+        <div>Nível: <span id="level-display" class="text-green-400 font-bold">1</span>/10</div>
+        <div>Tempo: <span id="timer-display" class="text-white font-mono">00:00</span></div>
+        <div>Movimentos: <span id="moves-display" class="text-blue-400 font-bold">0</span></div>
+    </div>
+
+    <!-- Game Area -->
+    <div id="game-container" class="terminal-container bg-black p-2 rounded-lg relative">
+        <div id="grid" class="grid"></div>
+        
+        <!-- Simplified Overlay -->
+        <div id="overlay" class="absolute inset-0 bg-[#0d1117] flex flex-col items-center justify-center text-center p-6 z-20 rounded-lg">
+            <div id="overlay-content" class="w-full max-w-sm">
+                <h2 class="text-4xl font-bold mb-12 text-green-500 tracking-tight">VIM Master CHALLENGE</h2>
+                
+                <button onclick="startGame()" class="w-full bg-green-600 hover:bg-green-500 text-white py-5 rounded-md font-bold text-xl transition transform hover:scale-105 active:scale-95 shadow-xl shadow-green-900/20">
+                    INICIAR
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Key Hints -->
+    <div id="hints-container" class="mt-6 flex gap-3 hidden">
+        <div id="key-h" class="key-hint">h<div class="text-[10px] text-gray-500">←</div></div>
+        <div id="key-j" class="key-hint">j<div class="text-[10px] text-gray-500">↓</div></div>
+        <div id="key-k" class="key-hint">k<div class="text-[10px] text-gray-500">↑</div></div>
+        <div id="key-l" class="key-hint">l<div class="text-[10px] text-gray-500">→</div></div>
+    </div>
+
+    <!-- Mobile Controls -->
+    <div id="mobile-controls" class="mt-6 md:hidden d-pad grid grid-cols-3 gap-2 hidden">
+        <div></div>
+        <button onclick="handleMove('k')">k</button>
+        <div></div>
+        <button onclick="handleMove('h')">h</button>
+        <button onclick="handleMove('j')">j</button>
+        <button onclick="handleMove('l')">l</button>
+    </div>
+
+    <script>
+        const GRID_WIDTH = 20;
+        const GRID_HEIGHT = 12;
+        const MAX_LEVELS = 10;
+        
+        let player = { x: 1, y: 1 };
+        let goal = { x: 18, y: 10 };
+        let moves = 0;
+        let level = 1;
+        let gameActive = false;
+        let walls = [];
+        let startTime = null;
+        let timerInterval = null;
+
+        const gridElement = document.getElementById('grid');
+        const levelDisplay = document.getElementById('level-display');
+        const movesDisplay = document.getElementById('moves-display');
+        const timerDisplay = document.getElementById('timer-display');
+        const overlay = document.getElementById('overlay');
+        const overlayContent = document.getElementById('overlay-content');
+        const statsBar = document.getElementById('stats-bar');
+        const hintsContainer = document.getElementById('hints-container');
+        const mobileControls = document.getElementById('mobile-controls');
+        const gameContainer = document.getElementById('game-container');
+
+        function initGrid() {
+            gridElement.style.gridTemplateColumns = `repeat(${GRID_WIDTH}, 30px)`;
+        }
+
+        function formatTime(ms) {
+            const totalSeconds = Math.floor(ms / 1000);
+            const minutes = Math.floor(totalSeconds / 60);
+            const seconds = totalSeconds % 60;
+            return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        }
+
+        function updateTimer() {
+            if (!startTime) return;
+            const elapsed = Date.now() - startTime;
+            timerDisplay.innerText = formatTime(elapsed);
+        }
+
+        function generateLevel() {
+            walls = [];
+            for (let x = 0; x < GRID_WIDTH; x++) {
+                walls.push({x, y: 0});
+                walls.push({x, y: GRID_HEIGHT - 1});
+            }
+            for (let y = 0; y < GRID_HEIGHT; y++) {
+                walls.push({x: 0, y});
+                walls.push({x: GRID_WIDTH - 1, y});
+            }
+
+            player = {
+                x: Math.floor(Math.random() * (GRID_WIDTH - 4)) + 2,
+                y: Math.floor(Math.random() * (GRID_HEIGHT - 4)) + 2
+            };
+
+            let validGoal = false;
+            while (!validGoal) {
+                goal = {
+                    x: Math.floor(Math.random() * (GRID_WIDTH - 2)) + 1,
+                    y: Math.floor(Math.random() * (GRID_HEIGHT - 2)) + 1
+                };
+                const dist = Math.abs(player.x - goal.x) + Math.abs(player.y - goal.y);
+                if (dist > 8) validGoal = true;
+            }
+
+            const obstacleDensity = 0.1 + (level * 0.02); 
+            const obstacleCount = Math.floor((GRID_WIDTH * GRID_HEIGHT) * obstacleDensity);
+            
+            for (let i = 0; i < obstacleCount; i++) {
+                const ox = Math.floor(Math.random() * (GRID_WIDTH - 2)) + 1;
+                const oy = Math.floor(Math.random() * (GRID_HEIGHT - 2)) + 1;
+                
+                const isOccupied = (ox === player.x && oy === player.y) || 
+                                   (ox === goal.x && oy === goal.y) ||
+                                   walls.some(w => w.x === ox && w.y === oy);
+                
+                if (!isOccupied) {
+                    walls.push({x: ox, y: oy});
+                }
+            }
+        }
+
+        function render() {
+            gridElement.innerHTML = '';
+            const fragment = document.createDocumentFragment();
+
+            for (let y = 0; y < GRID_HEIGHT; y++) {
+                for (let x = 0; x < GRID_WIDTH; x++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'grid-cell';
+                    
+                    if (x === player.x && y === player.y) {
+                        cell.className += ' player';
+                        cell.innerText = '█';
+                    } else if (x === goal.x && y === goal.y) {
+                        cell.className += ' goal';
+                        cell.innerText = '★';
+                    } else if (walls.some(w => w.x === x && w.y === y)) {
+                        cell.className += ' wall';
+                        cell.innerText = '#';
+                    } else {
+                        cell.className += ' trail';
+                        cell.innerText = '·';
+                    }
+                    fragment.appendChild(cell);
+                }
+            }
+            gridElement.appendChild(fragment);
+        }
+
+        function handleMove(key) {
+            if (!gameActive) return;
+
+            let nextX = player.x;
+            let nextY = player.y;
+
+            const keyEl = document.getElementById(`key-${key}`);
+            if (keyEl) {
+                keyEl.classList.add('key-active');
+                setTimeout(() => keyEl.classList.remove('key-active'), 80);
+            }
+
+            switch(key) {
+                case 'h': nextX--; break;
+                case 'j': nextY++; break;
+                case 'k': nextY--; break;
+                case 'l': nextX++; break;
+                default: return;
+            }
+
+            const hitWall = walls.some(w => w.x === nextX && w.y === nextY);
+            if (!hitWall) {
+                player.x = nextX;
+                player.y = nextY;
+                moves++;
+                movesDisplay.innerText = moves;
+                
+                if (player.x === goal.x && player.y === goal.y) {
+                    nextLevel();
+                } else {
+                    render();
+                }
+            }
+        }
+
+        function nextLevel() {
+            if (level >= MAX_LEVELS) {
+                endGame();
+            } else {
+                level++;
+                levelDisplay.innerText = level;
+                generateLevel();
+                render();
+            }
+        }
+
+        function startGame() {
+            gameActive = true;
+            level = 1;
+            moves = 0;
+            startTime = Date.now();
+            
+            levelDisplay.innerText = level;
+            movesDisplay.innerText = moves;
+            
+            // Mostrar elementos do jogo
+            overlay.style.display = 'none';
+            statsBar.classList.remove('hidden');
+            hintsContainer.classList.remove('hidden');
+            mobileControls.classList.remove('hidden');
+            gameContainer.classList.remove('rounded-lg');
+            gameContainer.classList.add('rounded-b-lg');
+            
+            generateLevel();
+            render();
+
+            if (timerInterval) clearInterval(timerInterval);
+            timerInterval = setInterval(updateTimer, 1000);
+        }
+
+        function endGame() {
+            gameActive = false;
+            clearInterval(timerInterval);
+            const totalTime = Date.now() - startTime;
+            
+            overlay.style.display = 'flex';
+            overlayContent.innerHTML = `
+                <h2 class="text-4xl font-bold mb-2 text-yellow-400">MISSÃO CUMPRIDA!</h2>
+                <div class="bg-gray-800 p-6 rounded-lg border border-gray-600 mb-6 text-left">
+                    <p class="text-xl mb-2">Tempo Total: <span class="text-white font-bold">${formatTime(totalTime)}</span></p>
+                    <p class="text-xl mb-2">Movimentos: <span class="text-blue-400 font-bold">${moves}</span></p>
+                </div>
+                <button onclick="location.reload()" class="w-full bg-green-600 hover:bg-green-500 text-white py-4 rounded-md font-bold transition">
+                    REINICIAR
+                </button>
+            `;
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space' && !gameActive) {
+                startGame();
+            }
+            
+            const key = e.key.toLowerCase();
+            if (['h', 'j', 'k', 'l'].includes(key)) {
+                handleMove(key);
+            }
+        });
+
+        initGrid();
+    </script>
+</body>
+</html>
