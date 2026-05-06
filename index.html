@@ -209,6 +209,52 @@
                     walls.push({x: ox, y: oy});
                 }
             }
+
+            ensureReachable();
+        }
+
+        function ensureReachable() {
+            const wallSet = new Set(walls.map(w => `${w.x},${w.y}`));
+            const inBounds = (x, y) => x >= 1 && x < GRID_WIDTH - 1 && y >= 1 && y < GRID_HEIGHT - 1;
+            const goalKey = `${goal.x},${goal.y}`;
+
+            // BFS through empty cells to check if the goal is reachable
+            const visited = new Set([`${player.x},${player.y}`]);
+            const queue = [[player.x, player.y]];
+            while (queue.length) {
+                const [x, y] = queue.shift();
+                if (x === goal.x && y === goal.y) return;
+                for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]]) {
+                    const nx = x + dx, ny = y + dy;
+                    const key = `${nx},${ny}`;
+                    if (!inBounds(nx, ny) || visited.has(key) || wallSet.has(key)) continue;
+                    visited.add(key);
+                    queue.push([nx, ny]);
+                }
+            }
+
+            // Goal is walled off — BFS ignoring walls and carve the shortest path
+            const parent = { [`${player.x},${player.y}`]: null };
+            const queue2 = [[player.x, player.y]];
+            while (queue2.length) {
+                const [x, y] = queue2.shift();
+                if (x === goal.x && y === goal.y) break;
+                for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]]) {
+                    const nx = x + dx, ny = y + dy;
+                    const key = `${nx},${ny}`;
+                    if (!inBounds(nx, ny) || key in parent) continue;
+                    parent[key] = `${x},${y}`;
+                    queue2.push([nx, ny]);
+                }
+            }
+
+            const cellsOnPath = new Set();
+            let cur = goalKey;
+            while (cur) {
+                cellsOnPath.add(cur);
+                cur = parent[cur];
+            }
+            walls = walls.filter(w => !cellsOnPath.has(`${w.x},${w.y}`));
         }
 
         function render() {
